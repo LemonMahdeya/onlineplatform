@@ -207,7 +207,7 @@ function setupMemo(cell, approvalId) {
 }
 
 /* ================================
-   AUTO LOGIN & REFRESH LOGIC
+   AUTO LOGIN & REFRESH LOGIC (المعدلة)
 ================================ */
 function handleLoginAndIdle() {
     // 1. Auto Login
@@ -215,11 +215,23 @@ function handleLoginAndIdle() {
     if (loginBtn && loginBtn.innerText.includes("Sign in")) {
         const u = localStorage.getItem("auto_user"), p = localStorage.getItem("auto_pass");
         const uIn = document.querySelector("input[name='email']"), pIn = document.querySelector("input[name='password']");
+        
         if (u && p && uIn && pIn) {
-            uIn.value = u; pIn.value = p;
+            // --- التعديل هنا: تفريغ الحقول وإرسال حدث التحديث ---
+            uIn.value = ""; 
+            pIn.value = "";
             uIn.dispatchEvent(new Event('input', { bubbles: true }));
             pIn.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            // --- تعبئة البيانات الجديدة ---
+            uIn.value = u; 
+            pIn.value = p;
+            uIn.dispatchEvent(new Event('input', { bubbles: true }));
+            pIn.dispatchEvent(new Event('input', { bubbles: true }));
+
             sessionStorage.setItem("autoLogin", "1");
+            
+            // التأخير ثانية واحدة قبل الضغط
             setTimeout(() => loginBtn.click(), 1000);
         }
     } else if (sessionStorage.getItem("autoLogin") === "1") {
