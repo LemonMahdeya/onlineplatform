@@ -140,7 +140,11 @@ function processOrders() {
         if (buttonsInitialized && mobileCell && !mobileCell.querySelector(".wa-btn")) {
             const mobile = mobileCell.innerText.trim().replace("+", "");
             if (mobile) {
-                const message = `السلام عليكم و رحمة الله\nحياكم الله أ/ ${memberName}\n نرحب بكم في *صيدليات ليمون*\nنفيدكم بأن طلبكم رقم ${approvalId} جارِ العمل عليه حالياً و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب.\nشكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً`;
+                const message = `عمار بيقولكم السلام عليكم و رحمة الله
+                \nحياكم الله أ/ ${memberName}\n 
+                نرحب بكم في *صيدليات ليمون*
+                \nنفيدكم بأن طلبكم رقم ${approvalId} جارِ العمل عليه حالياً و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب.\n
+                شكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً`;
                 
                 const helloBtn = createBtn(" 👋", () => window.open(`https://wa.me/${mobile}?text=${encodeURIComponent(message)}`, "_blank"));
                 const chatBtn = createBtn(" 💬", () => window.open(`https://wa.me/${mobile}`, "_blank"));
