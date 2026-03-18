@@ -1,266 +1,245 @@
 /* ================================
-   SETTINGS
-================================ */
-
+   SETTINGS & GLOBAL STATE
+=============================== */
 const ORDERS_PAGE = "https://lemon.rsof-dev.com/my-orders";
 const CHECK_INTERVAL = 4000;
-const BUTTON_DELAY = 4000; // تأخير ظهور أزرار الواتساب أول مرة
-
-/* ================================
-   GLOBAL STATE
-================================ */
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+const BUTTON_DELAY = 4000;
 
 let lastActivity = Date.now();
+let lastOrderState = null; // يحفظ آخر حالة (order أو terminate) لمنع التكرار
 let buttonsInitialized = false;
-let lastOrderState = null;
 
-/* ================================
-   ACTIVITY TRACK & IDLE REFRESH
-================================ */
-
-function resetIdle() {
-    lastActivity = Date.now();
-}
-
-document.addEventListener("click", resetIdle);
-document.addEventListener("keypress", resetIdle);
-
-function checkIdle() {
-    const idleTime = (Date.now() - lastActivity) / 1000;
-    if (idleTime > 180) {
-        console.log("Auto refresh بسبب الخمول");
-        location.reload(true);
+// طلب بيانات الدخول لو مش موجودة
+if (!localStorage.getItem("auto_user") || !localStorage.getItem("auto_pass")) {
+    const u = prompt("Enter Pharmacy Email:");
+    const p = prompt("Enter Pharmacy Password:");
+    if (u && p) {
+        localStorage.setItem("auto_user", u);
+        localStorage.setItem("auto_pass", p);
     }
 }
 
 /* ================================
-   LOGOUT DETECTOR & AUTO LOGIN
+   UTILITIES & SERVER COMMANDS
 ================================ */
-
-function detectLogout() {
-    const loginBtn = document.querySelector("button.btn.btn-primary");
-    const usernameInput = document.querySelector("input[name='email']");
-    const passwordInput = document.querySelector("input[name='password']");
-
-    if (loginBtn && loginBtn.innerText.includes("Sign in")) {
-        console.log("Login page detected");
-        const savedUser = localStorage.getItem("auto_user");
-        const savedPass = localStorage.getItem("auto_pass");
-
-        if (savedUser && savedPass && usernameInput && passwordInput) {
-            usernameInput.value = "";
-            passwordInput.value = "";
-            usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
-            passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-            usernameInput.value = savedUser;
-            passwordInput.value = savedPass;
-            usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
-            passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-            console.log("Auto filling login data...");
-            sessionStorage.setItem("autoLogin", "1");
-
-            setTimeout(() => {
-                loginBtn.click();
-            }, 1500);
-        }
-    } else if (sessionStorage.getItem("autoLogin") === "1") {
-        console.log("Redirecting to orders page...");
-        sessionStorage.removeItem("autoLogin");
-        window.location.href = ORDERS_PAGE;
-    }
+function formatTimeDiff(diffMs) {
+    const diffMins = Math.floor(Math.abs(diffMs) / (1000 * 60));
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 }
 
-/* =========================
-   ORDER STATUS CONTROLLER
-========================= */
+function parseLemonDate(updatedText) {
+    try {
+        const lines = updatedText.split('\n').map(s => s.trim()).filter(s => s);
+        if (lines.length < 2) return null;
+        const dateObj = new Date(`${lines[0].replace(',', '')} ${lines[1]}`);
+        return isNaN(dateObj.getTime()) ? null : dateObj.getTime();
+    } catch (e) { return null; }
+}
 
 function sendCommand(cmd) {
-    fetch(`http://localhost:17321/${cmd}`)
-        .then(() => console.log("Command sent:", cmd))
-        .catch(() => console.log("Local server not reachable"));
-}
-
-function checkAssigned() {
-    const rows = document.querySelectorAll("table tbody tr");
-    let foundAssigned = false;
-
-    rows.forEach(row => {
-        const rowText = row.innerText.toLowerCase();
-
-        if (rowText.includes("assigned to pharmacy")) {
-            foundAssigned = true;
-
-            if (!row.classList.contains("assigned-alert")) {
-                row.classList.add("assigned-alert");
-                row.style.background = "#fff3cd";
-                row.style.fontWeight = "bold";
-                console.log("Assigned Order Detected");
-            }
-        }
-    });
-
-    if (foundAssigned) {
-        if (lastOrderState !== "order") {
-            sendCommand("order");
-            lastOrderState = "order";
-        }
-    } else {
-        if (lastOrderState !== "terminate") {
-            sendCommand("terminate");
-            lastOrderState = "terminate";
-        }
-    }
+    if (lastOrderState === cmd) return; 
+    console.log(`📡 Sending Command: ${cmd}`);
+    fetch(`http://localhost:17321/${cmd}`, { mode: 'no-cors' })
+        .then(() => {
+            lastOrderState = cmd;
+            console.log(`✅ Server accepted: ${cmd}`);
+        })
+        .catch(() => console.warn("❌ Local server offline"));
 }
 
 /* ================================
-   ADD WHATSAPP & MEMO BUTTONS
+   TIMER RENDERING
 ================================ */
+function renderTimer(cell, value, isLive) {
+    let oldT = cell.querySelector(".order-timer");
+    if (oldT) oldT.remove();
 
-function addButtons() {
+    const timerSpan = document.createElement("div");
+    timerSpan.className = "order-timer fw-bold mt-1";
+    timerSpan.style.cssText = "font-size: 11px; display: block; padding: 2px 5px; border-radius: 4px; background: rgba(255,255,255,0.5); width: fit-content;";
+
+    if (isLive) {
+        const timeLeft = SIX_HOURS_MS - (Date.now() - value);
+        if (timeLeft > 0) {
+            timerSpan.innerText = `⏳ ${formatTimeDiff(timeLeft)} rem`;
+            timerSpan.style.color = "#0d6efd";
+        } else {
+            timerSpan.innerText = `⚠️ ${formatTimeDiff(timeLeft)} late`;
+            timerSpan.style.color = "#dc3545";
+        }
+    } else {
+        if (value <= SIX_HOURS_MS) {
+            timerSpan.innerText = "✅ In time";
+            timerSpan.style.color = "#198754";
+        } else {
+            timerSpan.innerText = `❌ ${formatTimeDiff(value - SIX_HOURS_MS)} late`;
+            timerSpan.style.color = "#dc3545";
+        }
+    }
+    cell.appendChild(timerSpan);
+}
+
+/* ================================
+   MAIN ENGINE (Orders & Buttons)
+================================ */
+function processOrders() {
     const rows = document.querySelectorAll("table tbody tr");
+    let assignedFound = false;
 
     rows.forEach(row => {
         const cells = row.querySelectorAll("td, th");
-        if (cells.length < 5) return;
+        if (cells.length < 9) return;
 
         const id = cells[0]?.innerText.trim();
-        const approval = cells[1]?.innerText.trim();
+        const approvalId = cells[1]?.innerText.trim();
         const memberName = cells[2]?.innerText.trim();
         const mobileCell = cells[3];
         const pharmacyCell = cells[4];
+        const statusCell = cells[6];   
+        const updatedCell = cells[8];  
+        const statusText = statusCell.innerText.toLowerCase();
 
-        if (!mobileCell || mobileCell.querySelector(".wa-btn")) return;
+        // --- الجزء الأول: التعامل مع التايمر والحالات ---
+        const deliveryTerms = ["delivered", "pickup by customer", "delivered without otp"];
+        const isDelivered = deliveryTerms.some(s => statusText.includes(s));
+        let startTime = localStorage.getItem(`start_time_${approvalId}`);
 
-        const mobile = mobileCell.innerText.trim().replace("+", "");
-        if (!mobile) return;
+        if (statusText.includes("canceled")) {
+            localStorage.removeItem(`start_time_${approvalId}`);
+            const oldT = statusCell.querySelector(".order-timer");
+            if (oldT) oldT.remove();
+        } 
+        else if (statusText.includes("assigned to pharmacy")) {
+            assignedFound = true;
+            row.style.backgroundColor = "#fff3cd";
+            row.style.fontWeight = "bold";
 
-        const message = `السلام عليكم و رحمة الله
-حياكم الله أ/ ${memberName}
-  نرحب بكم في *صيدليات ليمون*
- نفيدكم بأن طلبكم رقم ${approval} جارِ العمل عليه حالياً و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب. 
-شكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً`;
-        const encoded = encodeURIComponent(message);
-
-        // Hello Button
-        const helloBtn = document.createElement("span");
-        helloBtn.innerText = " 👋";
-        helloBtn.className = "wa-btn";
-        helloBtn.style.cursor = "pointer";
-        helloBtn.onclick = () => window.open(`https://wa.me/${mobile}?text=${encoded}`, "_blank");
-
-        // Chat Button
-        const chatBtn = document.createElement("span");
-        chatBtn.innerText = " 💬";
-        chatBtn.className = "wa-btn";
-        chatBtn.style.cursor = "pointer";
-        chatBtn.onclick = () => window.open(`https://wa.me/${mobile}`, "_blank");
-
-        // Print Button
-        const printBtn = document.createElement("span");
-        printBtn.innerText = " 🖨️";
-        printBtn.className = "wa-btn";
-        printBtn.style.cursor = "pointer";
-        printBtn.onclick = () => {
-            const w = window.open("", "", "width=300,height=400");
-            w.document.write(`
-                <html>
-                <head><style>body{font-family:Arial;width:80mm;padding:10px;}.row{margin:8px 0;font-size:20px;font-weight:bold;}@page{size:80mm auto;margin:0;}</style></head>
-                <body>
-                    <div class="row">ID: ${id}</div>
-                    <div class="row">APPROVAL: ${approval}</div>
-                    <div class="row">NAME: ${memberName}</div>
-                    <div class="row">MOBILE: ${mobile}</div>
-                </body>
-                </html>
-            `);
-            w.document.close();
-            w.focus();
-            setTimeout(() => { w.print(); w.close(); }, 500);
-        };
-
-        mobileCell.appendChild(helloBtn);
-        mobileCell.appendChild(chatBtn);
-        mobileCell.appendChild(printBtn);
-
-        // Memo System
-        if (pharmacyCell && !pharmacyCell.classList.contains("memo-ready")) {
-            pharmacyCell.classList.add("memo-ready");
-            pharmacyCell.style.fontWeight = "bold";
-            pharmacyCell.style.cursor = "pointer";
-
-            const key = "memo_" + approval;
-            const memo = localStorage.getItem(key);
-
-            if (memo) {
-                const pin = document.createElement("span");
-                pin.innerText = " 📌";
-                pharmacyCell.appendChild(pin);
-                pharmacyCell.title = memo;
+            if (!startTime) {
+                startTime = parseLemonDate(updatedCell.innerText);
+                if (startTime) localStorage.setItem(`start_time_${approvalId}`, startTime);
             }
+            if (startTime) renderTimer(statusCell, parseInt(startTime), true);
+        } 
+        else if (isDelivered) {
+            if (startTime) {
+                const endTime = parseLemonDate(updatedCell.innerText);
+                if (endTime) {
+                    const duration = endTime - parseInt(startTime);
+                    renderTimer(statusCell, duration, false);
+                }
+            }
+        } 
+        else if (startTime) {
+            renderTimer(statusCell, parseInt(startTime), true);
+        }
 
-            pharmacyCell.onclick = () => {
-                const oldMemo = localStorage.getItem(key) || "";
-                const overlay = document.createElement("div");
-                Object.assign(overlay.style, {
-                    position: "fixed", top: "0", left: "0", width: "100%", height: "100%",
-                    background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center",
-                    justifyContent: "center", zIndex: "9999"
-                });
+        // --- الجزء الثاني: إضافة أزرار الواتساب والملاحظات ---
+        if (buttonsInitialized && mobileCell && !mobileCell.querySelector(".wa-btn")) {
+            const mobile = mobileCell.innerText.trim().replace("+", "");
+            if (mobile) {
+                const message = `السلام عليكم و رحمة الله\nحياكم الله أ/ ${memberName}\n نرحب بكم في *صيدليات ليمون*\nنفيدكم بأن طلبكم رقم ${approvalId} جارِ العمل عليه حالياً و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب.\nشكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً`;
+                
+                const helloBtn = createBtn(" 👋", () => window.open(`https://wa.me/${mobile}?text=${encodeURIComponent(message)}`, "_blank"));
+                const chatBtn = createBtn(" 💬", () => window.open(`https://wa.me/${mobile}`, "_blank"));
+                const printBtn = createBtn(" 🖨️", () => printOrder(id, approvalId, memberName, mobile));
 
-                const box = document.createElement("div");
-                Object.assign(box.style, {
-                    background: "white", padding: "15px", borderRadius: "8px",
-                    width: "320px", boxShadow: "0 0 10px rgba(0,0,0,0.3)"
-                });
+                mobileCell.appendChild(helloBtn);
+                mobileCell.appendChild(chatBtn);
+                mobileCell.appendChild(printBtn);
+            }
+        }
 
-                const textarea = document.createElement("textarea");
-                textarea.value = oldMemo;
-                textarea.style.width = "100%";
-                textarea.style.height = "140px";
-
-                const save = document.createElement("button");
-                save.innerText = "Save";
-                save.onclick = () => {
-                    const val = textarea.value.trim();
-                    if (val) localStorage.setItem(key, val);
-                    else localStorage.removeItem(key);
-                    location.reload();
-                };
-
-                const cancel = document.createElement("button");
-                cancel.innerText = "Cancel";
-                cancel.style.marginLeft = "10px";
-                cancel.onclick = () => document.body.removeChild(overlay);
-
-                box.appendChild(textarea);
-                box.appendChild(document.createElement("br"));
-                box.appendChild(save);
-                box.appendChild(cancel);
-                overlay.appendChild(box);
-                document.body.appendChild(overlay);
-            };
+        // نظام الملاحظات (Memo)
+        if (pharmacyCell && !pharmacyCell.classList.contains("memo-ready")) {
+            setupMemo(pharmacyCell, approvalId);
         }
     });
+
+    // التحكم في صوت التنبيه بالسيرفر
+    sendCommand(assignedFound ? "order" : "terminate");
 }
 
 /* ================================
-   INITIALIZATION & MAIN LOOP
+   UI HELPERS
 ================================ */
+function createBtn(text, onClick) {
+    const span = document.createElement("span");
+    span.innerText = text;
+    span.className = "wa-btn";
+    span.style.cursor = "pointer";
+    span.onclick = onClick;
+    return span;
+}
 
-// تأخير تشغيل الأزرار لأول مرة لضمان تحميل الصفحة
-setTimeout(() => {
-    addButtons();
-    buttonsInitialized = true;
-}, BUTTON_DELAY);
+function printOrder(id, approval, name, mobile) {
+    const w = window.open("", "", "width=300,height=400");
+    w.document.write(`<html><head><style>body{font-family:Arial;width:80mm;padding:10px;}.row{margin:8px 0;font-size:20px;font-weight:bold;}@page{size:80mm auto;margin:0;}</style></head><body><div class="row">ID: ${id}</div><div class="row">APPROVAL: ${approval}</div><div class="row">NAME: ${name}</div><div class="row">MOBILE: ${mobile}</div></body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); w.close(); }, 500);
+}
 
-// التكرار الدوري للفحوصات
-setInterval(() => {
-    detectLogout();
-    checkIdle();
-    checkAssigned();
-    if (buttonsInitialized) {
-        addButtons();
+function setupMemo(cell, approvalId) {
+    cell.classList.add("memo-ready");
+    cell.style.fontWeight = "bold";
+    cell.style.cursor = "pointer";
+    const key = "memo_" + approvalId;
+    const memo = localStorage.getItem(key);
+
+    if (memo) {
+        const pin = document.createElement("span");
+        pin.innerText = " 📌";
+        cell.appendChild(pin);
+        cell.title = memo;
     }
+
+    cell.onclick = () => {
+        const val = prompt("Enter Memo:", localStorage.getItem(key) || "");
+        if (val !== null) {
+            if (val.trim()) localStorage.setItem(key, val);
+            else localStorage.removeItem(key);
+            location.reload();
+        }
+    };
+}
+
+/* ================================
+   AUTO LOGIN & REFRESH LOGIC
+================================ */
+function handleLoginAndIdle() {
+    // 1. Auto Login
+    const loginBtn = document.querySelector("button.btn.btn-primary");
+    if (loginBtn && loginBtn.innerText.includes("Sign in")) {
+        const u = localStorage.getItem("auto_user"), p = localStorage.getItem("auto_pass");
+        const uIn = document.querySelector("input[name='email']"), pIn = document.querySelector("input[name='password']");
+        if (u && p && uIn && pIn) {
+            uIn.value = u; pIn.value = p;
+            uIn.dispatchEvent(new Event('input', { bubbles: true }));
+            pIn.dispatchEvent(new Event('input', { bubbles: true }));
+            sessionStorage.setItem("autoLogin", "1");
+            setTimeout(() => loginBtn.click(), 1000);
+        }
+    } else if (sessionStorage.getItem("autoLogin") === "1") {
+        sessionStorage.removeItem("autoLogin");
+        window.location.href = ORDERS_PAGE;
+    }
+
+    // 2. Idle Refresh (3 minutes)
+    if ((Date.now() - lastActivity) / 1000 > 180) location.reload();
+}
+
+/* ================================
+   INIT
+================================ */
+document.addEventListener("click", () => lastActivity = Date.now());
+document.addEventListener("keypress", () => lastActivity = Date.now());
+
+setTimeout(() => { buttonsInitialized = true; }, BUTTON_DELAY);
+
+setInterval(() => {
+    processOrders();
+    handleLoginAndIdle();
 }, CHECK_INTERVAL);
