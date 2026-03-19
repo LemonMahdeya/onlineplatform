@@ -211,39 +211,64 @@ function setupMemo(cell, approvalId) {
 }
 
 /* ================================
-   AUTO LOGIN & REFRESH LOGIC (المعدلة)
+   AUTO LOGIN & REFRESH LOGIC (FIXED)
 ================================ */
+function setReactInputValue(input, value) {
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+    ).set;
+
+    nativeSetter.call(input, value);
+
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function handleLoginAndIdle() {
     // 1. Auto Login
     const loginBtn = document.querySelector("button.btn.btn-primary");
     if (loginBtn && loginBtn.innerText.includes("Sign in")) {
-        const u = localStorage.getItem("auto_user"), p = localStorage.getItem("auto_pass");
-        const uIn = document.querySelector("input[name='email']"), pIn = document.querySelector("input[name='password']");
+        const u = localStorage.getItem("auto_user"),
+              p = localStorage.getItem("auto_pass");
+
+        const uIn = document.querySelector("input[name='email']"),
+              pIn = document.querySelector("input[name='password']");
         
         if (u && p && uIn && pIn) {
-            // --- التعديل هنا: تفريغ الحقول وإرسال حدث التحديث ---
-            uIn.value = ""; 
-            pIn.value = "";
-            uIn.dispatchEvent(new Event('input', { bubbles: true }));
-            pIn.dispatchEvent(new Event('input', { bubbles: true }));
-            
-            // --- تعبئة البيانات الجديدة ---
-            uIn.value = u; 
-            pIn.value = p;
-            uIn.dispatchEvent(new Event('input', { bubbles: true }));
-            pIn.dispatchEvent(new Event('input', { bubbles: true }));
+            // Focus علشان نحاكي user حقيقي
+            uIn.focus();
+            setReactInputValue(uIn, u);
+
+            pIn.focus();
+            setReactInputValue(pIn, p);
+
+            // Trigger validation
+            uIn.dispatchEvent(new Event('change', { bubbles: true }));
+            pIn.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Blur علشان أي validation إضافي
+            uIn.blur();
+            pIn.blur();
 
             sessionStorage.setItem("autoLogin", "1");
-            
-            setTimeout(() => loginBtn.click(), 2000);
+
+            // Click بشكل شبه بشري
+            setTimeout(() => {
+                loginBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                loginBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                loginBtn.click();
+            }, 1200);
         }
-    } else if (sessionStorage.getItem("autoLogin") === "1") {
+    } 
+    else if (sessionStorage.getItem("autoLogin") === "1") {
         sessionStorage.removeItem("autoLogin");
         window.location.href = ORDERS_PAGE;
     }
 
     // 2. Idle Refresh (3 minutes)
-    if ((Date.now() - lastActivity) / 1000 > 180) location.reload();
+    if ((Date.now() - lastActivity) / 1000 > 180) {
+        location.reload();
+    }
 }
 
 /* ================================
