@@ -235,8 +235,7 @@ function handleLoginAndIdle() {
 
             sessionStorage.setItem("autoLogin", "1");
             
-            // التأخير ثانية واحدة قبل الضغط
-            setTimeout(() => loginBtn.click(), 1500);
+            setTimeout(() => loginBtn.click(), 2000);
         }
     } else if (sessionStorage.getItem("autoLogin") === "1") {
         sessionStorage.removeItem("autoLogin");
