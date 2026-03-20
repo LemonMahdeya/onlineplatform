@@ -7,10 +7,10 @@ const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const BUTTON_DELAY = 4000;
 
 let lastActivity = Date.now();
-let lastOrderState = null; // يحفظ آخر حالة (order أو terminate) لمنع التكرار
+let lastOrderState = null; // 
 let buttonsInitialized = false;
 
-// طلب بيانات الدخول لو مش موجودة
+// ة
 if (!localStorage.getItem("auto_user") || !localStorage.getItem("auto_pass")) {
     const u = prompt("Enter Pharmacy Email:");
     const p = prompt("Enter Pharmacy Password:");
@@ -102,7 +102,7 @@ function processOrders() {
         const updatedCell = cells[8];  
         const statusText = statusCell.innerText.toLowerCase();
 
-        // --- الجزء الأول: التعامل مع التايمر والحالات ---
+        // --- الج ---
         const deliveryTerms = ["delivered", "pickup by customer", "delivered without otp"];
         const isDelivered = deliveryTerms.some(s => statusText.includes(s));
         let startTime = localStorage.getItem(`start_time_${approvalId}`);
@@ -136,7 +136,7 @@ function processOrders() {
             renderTimer(statusCell, parseInt(startTime), true);
         }
 
-        // --- الجزء الثاني: إضافة أزرار الواتساب والملاحظات ---
+        // --- الجزء ا ---
         if (buttonsInitialized && mobileCell && !mobileCell.querySelector(".wa-btn")) {
             const mobile = mobileCell.innerText.trim().replace("+", "");
             if (mobile) {
@@ -162,7 +162,7 @@ function processOrders() {
         }
     });
 
-    // التحكم في صوت التنبيه بالسيرفر
+    // الفر
     sendCommand(assignedFound ? "order" : "terminate");
 }
 
@@ -246,13 +246,13 @@ function handleLoginAndIdle() {
             uIn.dispatchEvent(new Event('change', { bubbles: true }));
             pIn.dispatchEvent(new Event('change', { bubbles: true }));
 
-            // Blur علشان أي validation إضافي
+            // Bفي
             uIn.blur();
             pIn.blur();
 
             sessionStorage.setItem("autoLogin", "1");
 
-            // Click بشكل شبه بشري
+            // Cشري
             setTimeout(() => {
                 loginBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
                 loginBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
