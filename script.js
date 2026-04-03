@@ -2,15 +2,16 @@
    SETTINGS & GLOBAL STATE
 =============================== */
 const ORDERS_PAGE = "https://lemon.rsof-dev.com/my-orders";
+const DETAILS_PAGE_PART = "/medicine-request/details/"; // جزء من رابط صفحة التفاصيل
 const CHECK_INTERVAL = 4000;
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const BUTTON_DELAY = 4000;
 
 let lastActivity = Date.now();
-let lastOrderState = null; // 
+let lastOrderState = null; 
 let buttonsInitialized = false;
 
-// ة
+// طلب بيانات الدخول
 if (!localStorage.getItem("auto_user") || !localStorage.getItem("auto_pass")) {
     const u = prompt("Enter Pharmacy Email:");
     const p = prompt("Enter Pharmacy Password:");
@@ -18,6 +19,86 @@ if (!localStorage.getItem("auto_user") || !localStorage.getItem("auto_pass")) {
         localStorage.setItem("auto_user", u);
         localStorage.setItem("auto_pass", p);
     }
+}
+
+/* ================================
+   MAP CAPTURE ENGINE (الجديد)
+================================ */
+async function captureMapUrl(originalButton) {
+    return new Promise((resolve) => {
+        const originalOpen = window.open;
+        let caughtUrl = null;
+
+        window.open = function(url) {
+            if (url && (url.includes('google') || url.includes('maps') || url.includes('googleusercontent'))) {
+                caughtUrl = url;
+                return null; 
+            }
+            return originalOpen.apply(this, arguments);
+        };
+
+        const clickEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
+        originalButton.dispatchEvent(clickEvent);
+
+        setTimeout(() => {
+            window.open = originalOpen;
+            resolve(caughtUrl);
+        }, 600); 
+    });
+}
+
+/* ================================
+   NEW: DETAILS PAGE LOGIC (حقن زر النسخ في صفحة التفاصيل)
+================================ */
+function processDetailsPage() {
+    if (!window.location.href.includes(DETAILS_PAGE_PART)) return;
+
+    const mapIcon = document.querySelector('.fe-map');
+    if (!mapIcon) return;
+
+    const originalButton = mapIcon.closest('button') || mapIcon.closest('a');
+    if (!originalButton || document.querySelector(".copy-loc-details-btn")) return;
+
+    const copyBtn = document.createElement('button');
+    // غيرنا الاسم ليكون أنسب للوظيفة الجديدة
+    copyBtn.className = 'btn btn-info btn-lg mx-2 copy-loc-details-btn'; 
+    copyBtn.innerHTML = '📍 Open in Lemon map';
+    copyBtn.style.cssText = "font-weight: bold; padding: 10px 20px; margin-bottom: 10px; color: white;";
+
+    copyBtn.onclick = async (e) => {
+        e.preventDefault();
+        const oldText = copyBtn.innerHTML;
+        copyBtn.innerHTML = '⏳ جاري تحويل الإحداثيات...';
+
+        const url = await captureMapUrl(originalButton);
+        
+        if (url) {
+            // استخراج الإحداثيات باستخدام Regex
+            // يبحث عن الأرقام التي تحتوي على علامة عشرية (Latitude & Longitude)
+            const coordsMatch = url.match(/([0-9]+\.[0-9]+),([0-9]+\.[0-9]+)/);
+
+            if (coordsMatch) {
+                const lat = coordsMatch[1];
+                const lng = coordsMatch[2];
+                
+                // بناء الرابط الجديد بالصيغة المطلوبة (باستخدام #)
+                const newUrl = `https://lemonmahdeya.github.io/lemonmap/#${lat},${lng}`;
+                
+                // فتح الرابط في تاب جديد
+                window.open(newUrl, "_blank");
+                
+                copyBtn.innerHTML = '✅ تم الفتح';
+            } else {
+                copyBtn.innerHTML = '❌ إحداثيات غير صالحة';
+            }
+        } else {
+            copyBtn.innerHTML = '❌ فشل جلب الرابط';
+        }
+        
+        setTimeout(() => copyBtn.innerHTML = oldText, 2500);
+    };
+
+    originalButton.parentNode.insertBefore(copyBtn, originalButton.nextSibling);
 }
 
 /* ================================
@@ -86,6 +167,9 @@ function renderTimer(cell, value, isLive) {
    MAIN ENGINE (Orders & Buttons)
 ================================ */
 function processOrders() {
+    // التأكد إننا في صفحة الجدول قبل تنفيذ الكود
+    if (!window.location.href.includes("/my-orders")) return;
+
     const rows = document.querySelectorAll("table tbody tr");
     let assignedFound = false;
 
@@ -102,7 +186,7 @@ function processOrders() {
         const updatedCell = cells[8];  
         const statusText = statusCell.innerText.toLowerCase();
 
-        // --- الج ---
+        // --- التوقيت ---
         const deliveryTerms = ["delivered", "pickup by customer", "delivered without otp"];
         const isDelivered = deliveryTerms.some(s => statusText.includes(s));
         let startTime = localStorage.getItem(`start_time_${approvalId}`);
@@ -123,46 +207,43 @@ function processOrders() {
             }
             if (startTime) renderTimer(statusCell, parseInt(startTime), true);
         } 
-        else if (isDelivered) {
-            if (startTime) {
-                const endTime = parseLemonDate(updatedCell.innerText);
-                if (endTime) {
-                    const duration = endTime - parseInt(startTime);
-                    renderTimer(statusCell, duration, false);
-                }
+        else if (isDelivered && startTime) {
+            const endTime = parseLemonDate(updatedCell.innerText);
+            if (endTime) {
+                const duration = endTime - parseInt(startTime);
+                renderTimer(statusCell, duration, false);
             }
         } 
         else if (startTime) {
             renderTimer(statusCell, parseInt(startTime), true);
         }
 
-        // --- الجزء ا ---
+        // --- الأزرار ---
         if (buttonsInitialized && mobileCell && !mobileCell.querySelector(".wa-btn")) {
             const mobile = mobileCell.innerText.trim().replace("+", "");
             if (mobile) {
-                const message = `السلام عليكم و رحمة الله
-                \nحياكم الله أ/ ${memberName}\n 
-                نرحب بكم في *صيدليات ليمون*
-                \nنفيدكم بأن طلبكم رقم ${approvalId} جارِ العمل عليه حالياً و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب.\n
-                شكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً`;
+                const message = `السلام عليكم و رحمة الله و بركاته
+\nحياكم الله أ/ ${memberName}\n
+
+نرحب بكم في *صيدليات ليمون*\n
+نفيدكم بأن طلبكم رقم ${approvalId} جاري العمل عليه و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب.
+
+                شكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً
+`;
                 
                 const helloBtn = createBtn(" 👋", () => window.open(`https://wa.me/${mobile}?text=${encodeURIComponent(message)}`, "_blank"));
                 const chatBtn = createBtn(" 💬", () => window.open(`https://wa.me/${mobile}`, "_blank"));
-                const printBtn = createBtn(" 🖨️", () => printOrder(id, approvalId, memberName, mobile));
 
                 mobileCell.appendChild(helloBtn);
                 mobileCell.appendChild(chatBtn);
-                mobileCell.appendChild(printBtn);
             }
         }
 
-        // نظام الملاحظات (Memo)
         if (pharmacyCell && !pharmacyCell.classList.contains("memo-ready")) {
             setupMemo(pharmacyCell, approvalId);
         }
     });
 
-    // الفر
     sendCommand(assignedFound ? "order" : "terminate");
 }
 
@@ -191,15 +272,11 @@ function setupMemo(cell, approvalId) {
     cell.style.fontWeight = "bold";
     cell.style.cursor = "pointer";
     const key = "memo_" + approvalId;
-    const memo = localStorage.getItem(key);
-
-    if (memo) {
+    if (localStorage.getItem(key)) {
         const pin = document.createElement("span");
         pin.innerText = " 📌";
         cell.appendChild(pin);
-        cell.title = memo;
     }
-
     cell.onclick = () => {
         const val = prompt("Enter Memo:", localStorage.getItem(key) || "");
         if (val !== null) {
@@ -211,61 +288,35 @@ function setupMemo(cell, approvalId) {
 }
 
 /* ================================
-   AUTO LOGIN & REFRESH LOGIC (FIXED)
+   AUTO LOGIN & REFRESH LOGIC
 ================================ */
 function setReactInputValue(input, value) {
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value"
-    ).set;
-
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
     nativeSetter.call(input, value);
-
     input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function handleLoginAndIdle() {
-    // 1. Auto Login
     const loginBtn = document.querySelector("button.btn.btn-primary");
     if (loginBtn && loginBtn.innerText.includes("Sign in")) {
-        const u = localStorage.getItem("auto_user"),
-              p = localStorage.getItem("auto_pass");
-
-        const uIn = document.querySelector("input[name='email']"),
-              pIn = document.querySelector("input[name='password']");
-        
+        const u = localStorage.getItem("auto_user"), p = localStorage.getItem("auto_pass");
+        const uIn = document.querySelector("input[name='email']"), pIn = document.querySelector("input[name='password']");
         if (u && p && uIn && pIn) {
-            // Focus علشان نحاكي user حقيقي
             uIn.focus();
             setReactInputValue(uIn, u);
-
             pIn.focus();
             setReactInputValue(pIn, p);
-
-            // Trigger validation
             uIn.dispatchEvent(new Event('change', { bubbles: true }));
             pIn.dispatchEvent(new Event('change', { bubbles: true }));
-
-            // Bفي
-            uIn.blur();
-            pIn.blur();
-
+            uIn.blur(); pIn.blur();
             sessionStorage.setItem("autoLogin", "1");
-
-            // Cشري
-            setTimeout(() => {
-                loginBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                loginBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                loginBtn.click();
-            }, 1200);
+            setTimeout(() => { loginBtn.click(); }, 1200);
         }
     } 
     else if (sessionStorage.getItem("autoLogin") === "1") {
         sessionStorage.removeItem("autoLogin");
         window.location.href = ORDERS_PAGE;
     }
-
-    // 2. Idle Refresh (3 minutes)
     if ((Date.now() - lastActivity) / 1000 > 180) {
         location.reload();
     }
@@ -273,13 +324,14 @@ function handleLoginAndIdle() {
 
 /* ================================
    INIT
-================================ */
+=============================== */
 document.addEventListener("click", () => lastActivity = Date.now());
 document.addEventListener("keypress", () => lastActivity = Date.now());
 
 setTimeout(() => { buttonsInitialized = true; }, BUTTON_DELAY);
 
 setInterval(() => {
-    processOrders();
-    handleLoginAndIdle();
+    processOrders();       // فحص صفحة الجدول
+    processDetailsPage();  // فحص صفحة التفاصيل
+    handleLoginAndIdle();  // فحص الدخول والنشاط
 }, CHECK_INTERVAL);
