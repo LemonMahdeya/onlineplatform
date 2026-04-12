@@ -323,7 +323,64 @@ function handleLoginAndIdle() {
 }
 
 /* ================================
-   INIT
+   NEW: AUTO FILTER ROUTINE (كل 15 دقيقة)
+================================ */
+const FILTER_INTERVAL = 5 * 60 * 1000; // 15 دقيقة
+let lastFilterTime = Date.now();
+let isFilteringRightNow = false;
+
+async function runAutoFilterRoutine() {
+    if (!window.location.href.includes("/my-orders") || isFilteringRightNow) return;
+    
+    console.log("🔍 Running Scheduled Filter Check...");
+    isFilteringRightNow = true;
+
+    const findBtn = (txt) => Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes(txt));
+    
+    // 1. فتح الفلاتر
+    const advBtn = findBtn('Advanced Filters');
+    if (advBtn) advBtn.click();
+
+    // 2. انتطار ظهور القائمة المنسدلة
+    setTimeout(() => {
+        const select = Array.from(document.querySelectorAll('select.form-select')).find(sel => sel.innerHTML.includes('Assigned To Pharmacy'));
+        const applyBtn = findBtn('Apply Filters');
+
+        if (select && applyBtn) {
+            select.focus();
+            select.value = "1"; // قيمة Assigned To Pharmacy
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+
+            setTimeout(() => {
+                applyBtn.click();
+
+                // 3. فحص النتائج بعد تطبيق الفلتر بـ 3 ثواني
+                setTimeout(() => {
+                    const rows = document.querySelectorAll("table tbody tr");
+                    // هل يوجد صفوف تحتوي على كلمة assigned ؟
+                    const foundAssigned = Array.from(rows).some(r => r.innerText.toLowerCase().includes("assigned to pharmacy"));
+
+                    if (foundAssigned) {
+                        console.log("✅ Assigned orders found! Keeping filters active.");
+                        // لا نفعل شيء، نترك الفلتر شغال للتنبيه
+                        isFilteringRightNow = false; 
+                    } else {
+                        console.log("❌ No assigned orders. Clearing filters...");
+                        const clearBtn = findBtn('Clear All Filters');
+                        if (clearBtn) clearBtn.click();
+                        isFilteringRightNow = false;
+                    }
+                }, 3000);
+            }, 1000);
+        } else {
+            isFilteringRightNow = false;
+        }
+    }, 2000);
+}
+
+/* ================================
+   MODIFIED INIT & INTERVAL
 =============================== */
 document.addEventListener("click", () => lastActivity = Date.now());
 document.addEventListener("keypress", () => lastActivity = Date.now());
@@ -331,7 +388,14 @@ document.addEventListener("keypress", () => lastActivity = Date.now());
 setTimeout(() => { buttonsInitialized = true; }, BUTTON_DELAY);
 
 setInterval(() => {
-    processOrders();       // فحص صفحة الجدول
-    processDetailsPage();  // فحص صفحة التفاصيل
-    handleLoginAndIdle();  // فحص الدخول والنشاط
+    // الوظائف الأساسية
+    processOrders();
+    processDetailsPage();
+    handleLoginAndIdle();
+
+    // فحص هل حان موعد الفلترة الدورية (كل 15 دقيقة)
+    if (Date.now() - lastFilterTime > FILTER_INTERVAL) {
+        lastFilterTime = Date.now();
+        runAutoFilterRoutine();
+    }
 }, CHECK_INTERVAL);
