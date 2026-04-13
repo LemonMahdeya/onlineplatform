@@ -223,7 +223,7 @@ function processOrders() {
             const mobile = mobileCell.innerText.trim().replace("+", "");
             if (mobile) {
                 const message = `السلام عليكم ورحمة الله وبركاته
-أهلاً بك أ/ ${memberName} ✨
+أهلاً بك أ/ ${memberName} 
 
 نحن في *صيدليات ليمون* نهتم بك، ونعمل الآن بكل إهتمام على تحضير طلبك رقم (${approvalId}). طلبك حالياً في أيدٍ أمينة وفريقنا يحرص على تجهيزه بأعلى معايير الجودة.
 
@@ -232,7 +232,7 @@ function processOrders() {
 ---
 
 Peace, mercy, and blessings of Allah be upon you
-Hello Mr./Ms. ${memberName} ✨
+Hello Mr./Ms. ${memberName} 
 
 At *Lemon Pharmacies*, we care about you. We are currently preparing your order no. (${approvalId}) with love and care. Your order is in safe hands, and our team is ensuring it meets the highest quality standards.
 
