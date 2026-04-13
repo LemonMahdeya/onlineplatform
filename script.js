@@ -222,14 +222,21 @@ function processOrders() {
         if (buttonsInitialized && mobileCell && !mobileCell.querySelector(".wa-btn")) {
             const mobile = mobileCell.innerText.trim().replace("+", "");
             if (mobile) {
-                const message = `السلام عليكم و رحمة الله و بركاته
-\nحياكم الله أ/ ${memberName}\n
+                const message = `السلام عليكم ورحمة الله وبركاته
+أهلاً بك أ/ ${memberName} ✨
 
-نرحب بكم في *صيدليات ليمون*\n
-نفيدكم بأن طلبكم رقم ${approvalId} جاري العمل عليه و تحضيره بعناية، و سنتواصل معكم في حال وجود أي استفسارات أو تحديثات على حالة الطلب.
+نحن في *صيدليات ليمون* نهتم بك، ونعمل الآن بكل إهتمام على تحضير طلبك رقم (${approvalId}). طلبك حالياً في أيدٍ أمينة وفريقنا يحرص على تجهيزه بأعلى معايير الجودة.
 
-                شكراً لثقتكم بصيدلية ليمون و نسعد بخدمتكم دائماً
-`;
+سنوافيك بكل جديد، وشكراً لاختيارك صيدلية ليمون للعناية بصحتك. 
+
+---
+
+Peace, mercy, and blessings of Allah be upon you
+Hello Mr./Ms. ${memberName} ✨
+
+At *Lemon Pharmacies*, we care about you. We are currently preparing your order no. (${approvalId}) with love and care. Your order is in safe hands, and our team is ensuring it meets the highest quality standards.
+
+We will keep you updated. Thank you for choosing "Lemon" for your healthcare needs.`;
                 
                 const helloBtn = createBtn(" 👋", () => window.open(`https://wa.me/${mobile}?text=${encodeURIComponent(message)}`, "_blank"));
                 const chatBtn = createBtn(" 💬", () => window.open(`https://wa.me/${mobile}`, "_blank"));
